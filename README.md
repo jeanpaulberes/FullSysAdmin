@@ -13,3 +13,6 @@ Following apps need to be installed
 - lynis: a complete system diagnostic tool (checks on troyans, viruses, ...)
 
 The Freemem bash script has be be downloaded into ~/bin
+
+A PySysadmin2.py program has been created replacing the necessity for the Freemem.sh bash script .. 
+So using PySysadmin2.py is the only program to be downloaded ... 
