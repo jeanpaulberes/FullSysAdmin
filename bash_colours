@@ -1,0 +1,43 @@
+# colors defined to be used in bash scripts ... file to be executed on bashrc level
+
+# Fonts
+Reset='\e[0m'					# Reset to Defaults
+Bold='\e[1m'
+Underline='\e[4m'
+
+# Standard Colours
+Black='\e[30m'
+Red='\e[31m'
+Green='\e[32m'
+Yellow='\e[33m'
+Blue='\e[34m'
+Magenta='\e[35m'
+Cyan='\e[36m'
+White='\e[37m'
+
+# Light Colours
+Grey='\e[90m'
+L_Red='\e[91m'
+L_Green='\e[92m'
+L_Yellow='\e[93m'
+L_Blue='\e[94m'
+L_Magenta='\e[95m'
+L_Cyan='\e[96m'
+L_White='\e[97m'
+
+# Background Colours
+B_Red='\e[41m'
+B_Green='\e[42m'
+B_Yellow='\e[43m'
+B_Blue='\e[44m'
+B_Magenta='\e[45m'
+B_Cyan='\e[46m'
+B_White='\e[47m'
+
+# Light Background Colours
+LB_Red='\e[101m'
+LB_Green='\e[102m'
+LB_Yellow='\e[103m'
+LB_Blue='\e[104m'
+LB_Magenta='\e[105m'
+LB_Cyan='\e[106m'

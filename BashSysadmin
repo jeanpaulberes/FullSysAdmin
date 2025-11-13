@@ -1,0 +1,300 @@
+#!/bin/bash
+##########################################################################
+# Title 		MySysadmin_v2.01
+# Date			2025-10-01
+#
+# Written by	Jean Paul BERES
+##
+# v2.0			Get System Params, no usage of fastfetch and/or neofetch,
+# 				support for several Shell versions and package managers
+#				Prerequisits:
+#				- expac
+#				- yay
+#				- ranger
+#				- dysk
+#
+# v2.01			2025-10-12
+#				Only usage of AWK utility/tool, no grep
+#				Detection of 2nd GPU				
+#				Small corrections: fonts and shell version (bash)
+##########################################################################
+source ~/bin/bash_colours	# Colours defined in .bash_colours file
+
+Init () {
+# -------------------- Output handling characters --------------------
+	tabs 25
+	N_Line='\n'		# New Line / Carriage Return
+# -------------------- Drawing Parameters (Box and Line) --------------------
+	Out=55								# \033[<x>;<y>H OR \e[<x>;<y>H Moving cursor at line x col y
+	L_Up="\e[-3;4H"
+	L_Out_Of_Box="\e["$Out";4H"
+	FirstHBoxLine=37					# First Horizontal position to start Box
+	FirstVPos=55						# Vertical Position (Column) to start Box
+	BoxWidth=48
+	LineWidth=70						# Width of Separator Line
+	FirstLine=$((FirstHBoxLine+1))		# First Line of Text and Vertical Box Character
+	TextPos=$((FirstVPos+3))
+	Text="(R)emoveAllCache - (F)reemem - (D)ir - (H)*"
+	Text2="(C)heckUpdates - (U)pdate - (I)nstallHistory"
+	Text3="(Q)uit"
+	LastVBoxPos=$((FirstVPos+BoxWidth+1))
+# -------------------- Create Temporary File --------------------
+	MyFile=$(mktemp)
+	Gpu=""
+	Gpu2=""
+}
+
+Get_Info () {
+##############################################################
+# -------------------- Gather information ------------------ #
+##############################################################
+
+# -------------------- OS / Distro Info ---------------
+	if command -v lsb_release >/dev/null; then
+		Os=$(lsb_release -ds)
+	else
+		source /etc/os-release 2>/dev/null
+		Os=$PRETTY_NAME
+	fi
+
+# -------------------- Kernel Info --------------------
+	Kernel=$(uname -sr)
+
+# -------------------- Shell + Version ----------------
+	shell_name=$(ps | awk 'NR==2 {print $4}')
+	# Get version for the most common shells
+	case "$shell_name" in
+		bash)   Shell=$(bash --version | awk 'NR==1 {print $2" "$3" "$4}' | awk -F'[(w)]' '{print $1}');;
+		zsh)    shell_ver=$(zsh --version | awk '{print $2}') 
+				Shell="${shell_name} ${shell_ver}" ;;
+		fish)   shell_ver=$(fish --version | awk '{print $3}')
+				Shell="${shell_name} ${shell_ver}" ;; 
+		ksh)    shell_ver=$(ksh --version 2>/dev/null | awk 'NR==1 {print $NF}')
+				Shell="${shell_name} ${shell_ver}" ;;
+		*)      shell_ver="${cwarn}unknown${creset}" ;;
+	esac
+	
+# -------------------- DE (KDE-specific) --------------
+	De=$(plasmashell --version 2 | awk '{print $1 " " $2}')
+	De="KDE "$De
+	Wm=$(echo $XDG_SESSION_TYPE)
+
+# -------------------- KDE Look-and-Feel --------------
+	if command -v kreadconfig5 >/dev/null; then
+		Plasma_Icons=$(kreadconfig5 --file kdeglobals --group Icons --key Theme 2>/dev/null || echo unknown)
+		Plasma_Cursor=$(kreadconfig5 --file kcminputrc --group Mouse --key cursorTheme 2>/dev/null || echo unknown)
+		Plasma_Colour=$(kreadconfig5 --file kdeglobals --group General --key ColorScheme 2>/dev/null || echo unknown)
+	else
+		Plasma_Icons=unknown
+		Plasma_Cursor=unknown
+	fi
+	# Qt style (KDE)
+	Qt_Style=$(kreadconfig5 --file kdeglobals --group KDE --key widgetStyle 2>/dev/null || echo unknown)
+	# Fonts - to be found in fullname row of command, ommiting quotes in outpu
+	Fonts=$(fc-match -v | awk -F': ' '/fullname:/ {gsub(/"/, "", $2); print $2}'| awk -F'[(-]' '{print $1}')
+
+# -------------------- CPU + GPU ----------------------
+	Cpu_Model=$(awk -F': +' '/model name/ {print $2; exit}' /proc/cpuinfo)
+	Cpu_Cores=$(nproc)
+	Cpu_Arch=$(lscpu | awk '/Architecture:/{print $2}')
+
+	# GPU (lspci, fallback to glxinfo)
+	if command -v lspci >/dev/null; then
+		Gpu=$(lspci | awk -F':' -v IGNORECASE=1 '/vga|3d|display/ {sub(/^[^:]*:[^:]*: /,""); print; exit}')
+	fi
+
+	if command -v glxinfo >/dev/null; then
+		Gpu2=$(glxinfo | awk -F': ' '/OpenGL renderer/ {print $2; exit}')
+	fi
+	
+# -------------------- Memory -------------------------
+	Mem_Total=$(free -h | awk '/Mem:/ {print $2}')
+	Mem_Used=$(free -m | awk '/Mem:/ {print ($2-$4-$6)}')                        # Calculated Free Memory from free -m as reported by Neofetch & Fastfetch
+
+# -------------------- Root Disk Usage ----------------
+	# takes from root disk (/) without header (Scnd line- NR==2) the used (col.3) from Tot. size (Col.2) with perc. used (col.5)
+	# Filesystem      Size  Used Avail Use% Mounted on
+	Root_Disk=$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')
+
+# -------------------- Package Managers----------------
+	if command -v pacman >/dev/null; then
+		Packages=$(pacman -Qq | wc -l)" (pacman)"
+		expac --timefmt='%Y-%m-%d %T' '%l\t%n' | sort | tail -n 50 > $MyFile
+	elif command -v dpkg >/dev/null; then
+		Packages=$(dpkg -l | grep ^ii | wc -l)" (dpkg)"
+	elif command -v rpm >/dev/null; then
+		Packages=$(rpm -qa | wc -l)" (rpm)"
+	else
+		Packages="unknown"
+	fi
+}
+##############################################################
+# -------------------- End of Information Gathering -------- #
+##############################################################
+
+# ---- Helper to print a coloured “key : value” line -------
+FmtOut() {
+    local key=$1
+    local val=$2
+    printf "${Bold}${Cyan}%s${Reset} ${Green}:${White} %s\n" "$key" "$val"
+}
+
+# ------------ Horizontal Separator Line --------------
+SepLine() {
+    printf $Magenta"%0.s─" $(seq 1 $LineWidth)
+    printf $N_Line
+ }
+
+# ---------------------- Output -----------------------
+MyFetch() {
+	printf $N_Line
+	SepLine
+	FmtOut "OS               "	 "$Os($Cpu_Arch)"
+	FmtOut "Kernel           "	 "$Kernel"
+	FmtOut "Shell            "	 "$Shell"
+	FmtOut "Root Disk        "	 "$Root_Disk"
+	FmtOut "Packages         "	 "$Packages"
+	SepLine
+	FmtOut "DE               "	 "$De - "$Wm
+	FmtOut "Qt Style         "	 "$Qt_Style"
+	FmtOut "Icons            "	 "$Plasma_Icons"
+	FmtOut "Color Scheme     "	 "$Plasma_Colour"
+	FmtOut "Font             "	 "$Fonts"
+	FmtOut "Plasma Cursor    "	 "$Plasma_Cursor"
+	SepLine
+	FmtOut "CPU              "	 "$Cpu_Model ($Cpu_Cores cores)"
+	FmtOut "GPU              "	 "$Gpu"
+	FmtOut "Second GPU       "	 "$Gpu2"
+	FmtOut "Mem.(Used/Total) "	 "$Mem_Used/$Mem_Total"
+	SepLine
+	printf $N_Line
+}
+
+DrawBox () {
+# Unicode drawing characters(https://en.wikipedia.org/wiki/Box-drawing_character)
+	local L_Top="\u250C"
+	local R_Top="\u2510"
+	local L_Bottom="\u2514"
+	local R_Bottom="\u2518"
+	local H_Line="\u2500"
+	local V_Line="\u2502"
+	local B1="\e["$FirstHBoxLine";"$FirstVPos"H"
+
+	printf $Green$Bold$B1$L_Top
+	printf "%0.s─" $(seq 1 $BoxWidth)  # Horizontal Line
+	printf $R_Top$N_Line
+
+	count=0
+	while [ $count -le 2 ]
+	do
+		local BoxLine=$((FirstLine+count))
+		local V1="\e["$BoxLine";"$FirstVPos"H"
+		local V2="\e["$BoxLine";"$LastVBoxPos"H"
+		printf $V1$V_Line
+		printf $V2$V_Line
+		((count++))
+	done
+
+	local LastHBoxLine=$((BoxLine+1))
+	local B2="\e["$LastHBoxLine";"$FirstVPos"H"
+	printf $B2$L_Bottom
+	printf "%0.s─" $(seq 1 $BoxWidth)	# Horizontal Line
+	printf $R_Bottom$N_Line
+}
+
+DisplayInfo () {
+	local T1="\e["$FirstLine";"$TextPos"H"
+	local NextLine=$((FirstLine+1))
+	local T2="\e["$NextLine";"$TextPos"H"
+	local NextLine=$((NextLine+1))
+	local T3="\e["$NextLine";"$TextPos"H"
+
+	echo -e $T1$Reset$L_Yellow$Bold$Text$L_Out_Of_Box$Reset
+	echo -e $T2$Reset$L_Yellow$Bold$Text2$L_Out_Of_Box$Reset
+	echo -e $T3$Reset$L_Yellow$Bold$Text3$L_Out_Of_Box$Reset
+}
+
+PressEnter () {
+	printf $N_Line
+	printf $L_Green$Bold"*** PRESS Enter to continue ***"
+	read
+	printf $Reset
+}
+
+InstallUpdates () {
+	clear
+	printf $L_Yellow$Bold"*** Install Updates ***"
+	read
+	yay -Syu
+}
+
+ListInstUpdates () {
+	clear
+	printf ${MyFile}${N_Line}
+	cat $MyFile
+}
+
+Selection () {
+	read -sn1 FreeChoice
+	case $FreeChoice in
+		R | r)	clear
+				rm -Rf ~/.cache/ -v ; mkdir ~/.cache -v ; rm ~/.local/share/recently-used.xbel -v
+				PressEnter
+			continue;;
+
+		F | f)	~/bin/Freemem
+				PressEnter
+			continue;;
+
+		D | d)	clear
+				ranger
+			continue;;
+
+		C | c)	clear
+				printf $N_Line$L_Yellow$Bold"*** Checkupdates ***"$Reset$N_Line$N_Line
+				checkupdates
+				PressEnter
+			continue;;
+					
+		U | u)	InstallUpdates
+				PressEnter
+			continue;;
+					
+		I | i)	ListInstUpdates
+				PressEnter
+			continue;;
+
+		H | h)	clear
+				hollywood
+			continue;;
+
+		T | t)	#only testing purposes
+				clear 
+				PressEnter
+			continue;;				
+			
+		*)  	echo -e $L_Out_Of_Box$L_Yellow$Bold$N_Line$N_Line
+						date
+						echo -e $Reset$L_Out_Of_Box$N_Line$N_Line
+						rm $MyFile
+		    exit 1;;
+	esac
+}
+
+##############################################################
+# ---------------------- MAIN section ---------------------- #
+##############################################################
+Init
+Get_Info
+while true
+do
+	[ $? -eq 1 ] && break
+	clear
+	MyFetch 2
+	yay -P --stats
+	dysk -c label+default --filter 'disk <> HDD' --sort filesystem -u binary ; dysk -c label+default --filter 'disk <> SSD' --sort filesystem -u binary
+	DrawBox
+	DisplayInfo
+	printf ${N_Line}
+	Selection
+done
