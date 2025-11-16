@@ -16,3 +16,5 @@ The Freemem bash script has be be downloaded into ~/bin
 
 A PySysadmin2.py program has been created replacing the necessity for the Freemem.sh bash script .. 
 So using PySysadmin2.py is the only program to be downloaded ... 
+
+All is tested in Konsole and Yakuake terminal under KDE Plasma 6.x -- font used : Noto Sans (size 9px)
